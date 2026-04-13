@@ -165,7 +165,7 @@
     .streak-text h3 { font-size: 13px; font-weight: 600; color: var(--text); }
     .streak-text p { font-size: 11px; color: var(--muted); margin-top: 2px; }
     .streak-dots { display: flex; gap: 5px; margin-left: auto; }
-    .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--bg3); border: 1px solid var(--border); }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--bg3); border: 1px solid var(--border); transition: background 0.2s, border-color 0.2s; }
     .dot.on { background: var(--accent2); border-color: var(--accent2); }
 
     /* SECTION */
@@ -358,18 +358,10 @@
     <div class="streak-bar">
       <span class="streak-icon">🔥</span>
       <div class="streak-text">
-        <h3>Daily streak</h3>
-        <p>Come back tomorrow to keep it going</p>
+        <h3 id="streakTitle">Daily streak</h3>
+        <p id="streakSub">Come back tomorrow to keep it going</p>
       </div>
-      <div class="streak-dots">
-        <div class="dot on"></div>
-        <div class="dot on"></div>
-        <div class="dot on"></div>
-        <div class="dot"></div>
-        <div class="dot"></div>
-        <div class="dot"></div>
-        <div class="dot"></div>
-      </div>
+      <div class="streak-dots" id="streakDots"></div>
     </div>
 
     <!-- RECENTLY PLAYED -->
@@ -440,10 +432,12 @@
     </div>
   </div>
 
-  <script src="script.js"></script>
   <script>
+    /* ============================================================
+       GAMES LIST
+    ============================================================ */
     const games = [
-      {name:"Bob the Robber 2",   href:"games/bob-the-robber-2/",         img:"images/bob-the-robber-2.png",                    cat:"action"},
+      {name:"Bob the Robber 2",    href:"games/bob-the-robber-2/",         img:"images/bob-the-robber-2.png",                    cat:"action"},
       {name:"Vex 7",               href:"games/vex7/",                      img:"images/vex7.jpeg",                               cat:"action"},
       {name:"Vex 6",               href:"games/vex6/",                      img:"images/vex6.jpeg",                               cat:"action"},
       {name:"Minecraft",           href:"games/minecraft/",                  img:"images/mc.png",                                  cat:"action"},
@@ -568,6 +562,54 @@
       {name:"Tiny Fishing",        href:"/games/tiny-fishing",               img:"/games/tiny-fishing/iconTF.png",                 cat:"idle"},
     ];
 
+    /* ============================================================
+       DAILY STREAK — persisted with sessionStorage (no localStorage needed)
+       Uses the calendar date so it increments once per day max.
+    ============================================================ */
+    (function initStreak() {
+      const STREAK_KEY = 'dm_streak';
+      const LAST_KEY   = 'dm_last_visit';
+      const today = new Date().toDateString();
+
+      let streak = parseInt(sessionStorage.getItem(STREAK_KEY) || '0', 10);
+      const last = sessionStorage.getItem(LAST_KEY);
+
+      if (last !== today) {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        if (last === yesterday.toDateString()) {
+          streak = Math.min(streak + 1, 7);
+        } else if (!last) {
+          streak = 1; // first ever visit
+        } else {
+          streak = 1; // streak broken, restart
+        }
+        sessionStorage.setItem(STREAK_KEY, streak);
+        sessionStorage.setItem(LAST_KEY, today);
+      }
+
+      // Render dots
+      const dotsEl = document.getElementById('streakDots');
+      for (let i = 0; i < 7; i++) {
+        const d = document.createElement('div');
+        d.className = 'dot' + (i < streak ? ' on' : '');
+        dotsEl.appendChild(d);
+      }
+
+      // Update label
+      document.getElementById('streakTitle').textContent =
+        streak > 1 ? `🔥 ${streak}-day streak!` : 'Daily streak';
+      document.getElementById('streakSub').textContent =
+        streak >= 7
+          ? 'Full week complete! Amazing!'
+          : streak > 1
+            ? 'Come back tomorrow to keep it going'
+            : 'Visit every day to build your streak';
+    })();
+
+    /* ============================================================
+       GAME GRID + CATEGORY FILTER
+    ============================================================ */
     let activeCat = 'all';
 
     function makeTile(g) {
@@ -578,7 +620,9 @@
     }
 
     function renderGrid(list, container) {
-      container.innerHTML = list.map(makeTile).join('');
+      container.innerHTML = list.length
+        ? list.map(makeTile).join('')
+        : '';
     }
 
     function filterAndRender() {
@@ -587,7 +631,7 @@
       document.getElementById('gameCount').textContent = filtered.length + ' games';
     }
 
-    document.getElementById('catRow').addEventListener('click', e => {
+    document.getElementById('catRow').addEventListener('click', function(e) {
       const btn = e.target.closest('.cat-btn');
       if (!btn) return;
       document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
@@ -596,14 +640,17 @@
       filterAndRender();
     });
 
+    /* ============================================================
+       SEARCH
+    ============================================================ */
     const searchInput = document.getElementById('searchInput');
-    const mainView = document.getElementById('mainView');
-    const searchView = document.getElementById('searchView');
-    const searchGrid = document.getElementById('searchGrid');
+    const mainView    = document.getElementById('mainView');
+    const searchView  = document.getElementById('searchView');
+    const searchGrid  = document.getElementById('searchGrid');
     const searchTitle = document.getElementById('searchTitle');
-    const noResults = document.getElementById('noResults');
+    const noResults   = document.getElementById('noResults');
 
-    searchInput.addEventListener('input', () => {
+    searchInput.addEventListener('input', function() {
       const q = searchInput.value.trim().toLowerCase();
       if (!q) {
         mainView.style.display = '';
@@ -614,25 +661,32 @@
       searchView.style.display = 'block';
       const hits = games.filter(g => g.name.toLowerCase().includes(q));
       searchTitle.textContent = hits.length
-        ? `${hits.length} result${hits.length !== 1 ? 's' : ''} for "${searchInput.value}"`
+        ? hits.length + ' result' + (hits.length !== 1 ? 's' : '') + ' for "' + searchInput.value + '"'
         : '';
       noResults.style.display = hits.length ? 'none' : 'block';
       renderGrid(hits, searchGrid);
     });
 
-    // MOTD
-    const motd = document.getElementById('motd');
-    document.querySelector('.motd-close').addEventListener('click', () => {
+    /* ============================================================
+       MOTD
+    ============================================================ */
+    document.querySelector('.motd-close').addEventListener('click', function() {
+      const motd = document.getElementById('motd');
       motd.classList.remove('visible');
       motd.setAttribute('aria-hidden', 'true');
     });
-    window.addEventListener('load', () => {
-      setTimeout(() => {
+
+    window.addEventListener('load', function() {
+      setTimeout(function() {
+        const motd = document.getElementById('motd');
         motd.classList.add('visible');
         motd.setAttribute('aria-hidden', 'false');
       }, 800);
     });
 
+    /* ============================================================
+       INIT
+    ============================================================ */
     filterAndRender();
   </script>
 </body>
